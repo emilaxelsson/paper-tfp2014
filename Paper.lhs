@@ -731,7 +731,7 @@ gsum _ _ = 0
 \end{code}
 
 \noindent
-Integers are returned as they are. For lists, we recursively `gsum` each element and then sum the result. We test `gshow` on a doubly-nested list of integers:
+Integers are returned as they are. For lists, we recursively `gsum` each element and then sum the result. We test `gsum` on a doubly-nested list of integers:
 
 \begin{code}
 listListInt :: Type_T2 [[Int]]
