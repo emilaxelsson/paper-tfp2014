@@ -786,7 +786,7 @@ data E e where E :: e a -> E e
 \label{fig:open-typerep-API}
 \end{figure}
 
-To demonstrate the use of the list type, we extend our language with constructs for constructing and eliminating lists:
+To demonstrate the use of the list type, we extend our language with constructs for introducing and eliminating lists:
 
 \begin{code}
 data List_F a = Single a | Cons a a | Head a | Tail a
