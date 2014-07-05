@@ -106,7 +106,7 @@ eval_U env (Iter v l i b) = case (eval_U env l, eval_U env i) of
 
 One thing stands out in this definition: there is a lot of pattern matching going on! Not only do we have to match on the constructors of `Exp` -- we also have to eliminate and introduce type tags (`B` and `I`) of interpreted values for every single operation. This continuous untagging and tagging has a negative effect on performance.
 
-In a dependently typed programming language, tags can be eliminated by letting the return type of `eval_U` depend on the expression\ \cite{augustsson1999exercise,pasali2002tagless}. This avoids the need for tagged unions in functions like `eval_U`. The standard way to do this in Haskell is to make `Exp` an indexed GADT\ \cite{peytonjones2006simple}, i.e. an expression type `Exp_T` that is indexed by the type it evaluates to, so the evaluator has the following type:
+In a dependently typed programming language, tags can be eliminated by letting the return type of `eval_U` depend on the expression\ \cite{augustsson1999exercise,pasalic2002tagless}. This avoids the need for tagged unions in functions like `eval_U`. The standard way to do this in Haskell is to make `Exp` an indexed GADT\ \cite{peytonjones2006simple}, i.e. an expression type `Exp_T` that is indexed by the type it evaluates to, so the evaluator has the following type:
 
 \begin{codex}
 eval_T :: ... -> Exp_T a -> a
