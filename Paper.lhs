@@ -106,7 +106,7 @@ eval_U env (Iter v l i b) = case (eval_U env l, eval_U env i) of
 
 One thing stands out in this definition: there is a lot of pattern matching going on! Not only do we have to match on the constructors of `Exp` -- we also have to eliminate and introduce type tags (`B` and `I`) of interpreted values for every single operation. This continuous untagging and tagging has a negative effect on performance.
 
-In a dependently typed programming language, tags can be eliminated by letting the return type of `eval_U` depend on the expression\ \cite{augustsson1999exercise,pasali2002tagless}. This avoids the need for tagged unions in functions like `eval_U`. The standard way to do this in Haskell is to make `Exp` an indexed GADT\ \cite{peytonjones2006simple}, i.e. an expression type `Exp_T` that is indexed by the type it evaluates to, so the evaluator has the following type:
+In a dependently typed programming language, tags can be eliminated by letting the return type of `eval_U` depend on the expression\ \cite{augustsson1999exercise,pasalic2002tagless}. This avoids the need for tagged unions in functions like `eval_U`. The standard way to do this in Haskell is to make `Exp` an indexed GADT\ \cite{peytonjones2006simple}, i.e. an expression type `Exp_T` that is indexed by the type it evaluates to, so the evaluator has the following type:
 
 \begin{codex}
 eval_T :: ... -> Exp_T a -> a
@@ -115,12 +115,12 @@ eval_T :: ... -> Exp_T a -> a
 \noindent
 This means that an expression of type `Exp_T Int` evaluates to an *actual* `Int` rather than a tagged `Int`, and since the type index may vary in the recursive calls of `eval_T`, there is no longer any need for a tagged union. In order to make evaluation for the original `Exp` type efficient, a partial conversion function from `Exp` to `Exp_T` can be defined, and `eval_T` can then be used to evaluate the converted expression. Such a conversion function is implemented in a blog post by Augustsson\ \cite{augustsson2009more} (though not for the purpose of evaluation).
 
-Although going through a type-indexed expression does get rid of the tags of interpreted values, there are at least two problems with this solution: (1) It requires the definition of an additional data type `Exp_T`. If this data type is only going to be used for evaluation, this seems quite redundant. (2) We still have to pattern match on `Exp_T`, which introduces to unnecessary overhead.
+Although going through a type-indexed expression does get rid of the tags of interpreted values, there are at least two problems with this solution: (1) It requires the definition of an additional data type `Exp_T`. If this data type is only going to be used for evaluation, this seems quite redundant. (2) We still have to pattern match on `Exp_T`, which introduces unnecessary overhead.
 
 The motivation behind this paper is to implement expression languages in a compositional style using W. Swierstra's Data Types à la Carte \cite{swierstra2008data}. The idea is to specify independent syntactic constructs as separate composable types, and to define functions over such types using extensible type classes (see Sec.\ \ref{compositional-data-types}). However, a compositional implementation is problematic when it comes to evaluation:
 
-  * Fully extensible *tagged evaluation* requires making both `Exp` and `Uni` compositional types. Construction and patten matching for compositional types is generally linear in the degree of modularity, which means that the tag problem mentioned above becomes much worse as the language is extended.
-  * Fully extensible *tagless evaluation* requires making both `Exp` and `Exp_T` compositional. However, a generic representation of `Exp_T` is quite different from that of `Exp`, and having to combine two different data type models just for the purpose of evaluation would make things unnecessarily complicated. Moreover, pattern matching on a compositional `Exp_T` gets more expensive as the langauge is extended.
+  * Fully extensible *tagged evaluation* requires making both `Exp` and `Uni` compositional types. Construction and pattern matching for compositional types is generally linear in the degree of modularity, which means that the tag problem mentioned above becomes much worse as the language is extended.
+  * Fully extensible *tagless evaluation* requires making both `Exp` and `Exp_T` compositional. However, a generic representation of `Exp_T` is quite different from that of `Exp`, and having to combine two different data type models just for the purpose of evaluation would make things unnecessarily complicated. Moreover, pattern matching on a compositional `Exp_T` gets more expensive as the language is extended.
 
 An excellent solution to this problem is given in Baars and D.S. Swierstra's "Typing Dynamic Typing"\ \cite{baars2002typing}. Their approach is essentially to replace `Exp_T a` by a function `env -> a` where `env` is the runtime environment. One may think of the technique as fusing the conversion from `Exp` to `Exp_T` with the evaluator `eval_T` so that the `Exp_T` representation disappears. Put simply, this approach avoids the problem of having to make a compositional version of `Exp_T`. Not only does this lead to a simpler implementation; it also makes evaluation more efficient, as we get rid of the pattern matching on `Exp_T`.
 
@@ -731,7 +731,7 @@ gsum _ _ = 0
 \end{code}
 
 \noindent
-Integers are returned as they are. For lists, we recursively `gsum` each element and then sum the result. We test `gshow` on a doubly-nested list of integers:
+Integers are returned as they are. For lists, we recursively `gsum` each element and then sum the result. We test `gsum` on a doubly-nested list of integers:
 
 \begin{code}
 listListInt :: Type_T2 [[Int]]
@@ -786,7 +786,7 @@ data E e where E :: e a -> E e
 \label{fig:open-typerep-API}
 \end{figure}
 
-To demonstrate the use of the list type, we extend our language with constructs for constructing and eliminating lists:
+To demonstrate the use of the list type, we extend our language with constructs for introducing and eliminating lists:
 
 \begin{code}
 data List_F a = Single a | Cons a a | Head a | Tail a
