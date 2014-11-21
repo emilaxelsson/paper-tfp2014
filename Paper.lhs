@@ -1083,5 +1083,5 @@ TODO One could make a deal about the fact that the method in this paper has cons
 \subsubsection*{Acknowledgements}
 
 \noindent
-{\small This work is funded by the Swedish Foundation for Strategic Research, under grant RAWFP. David Raymond Christiansen provided useful feedback on this paper.}
+{\small This work is funded by the Swedish Foundation for Strategic Research, under grant RAWFP. David Raymond Christiansen and Gabor Greif provided useful feedback on this paper.}
 
