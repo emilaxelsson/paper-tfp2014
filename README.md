@@ -1,7 +1,7 @@
-paper-tfp2014
-=============
+tagless-eval
+============
 
-Source code and benchmarks for the paper "Efficient and Compositional Evaluation of Untyped Expressions" submitted to TFP 2014.
+Source code and benchmarks for the report "Efficient and Compositional Evaluation of Untyped Expressions".
 
 The benchmarks can be run as follows:
 

@@ -32,12 +32,6 @@ deriving instance Show (f (Term f)) => Show (Term f)
 
 
 
-\begin{abstract}
-We give an efficient and compositional implementation of evaluation for an untyped representation of expressions. Building on Baars and Swierstra's ``Typing Dynamic Typing''~\cite{baars2002typing}, all tag checking is deferred to an initial dynamic compilation phase after which evaluation proceeds without any tag checking. The technique lends itself particularly well to a compositional implementation, where parts of the expression are defined separately, and this is also where we see the highest performance gains. % ``
-\end{abstract}
-
-
-
 Introduction
 ====================================================================================================
 
@@ -117,7 +111,7 @@ This means that an expression of type `Exp_T Int` evaluates to an *actual* `Int`
 
 Although going through a type-indexed expression does get rid of the tags of interpreted values, there are at least two problems with this solution: (1) It requires the definition of an additional data type `Exp_T`. If this data type is only going to be used for evaluation, this seems quite redundant. (2) We still have to pattern match on `Exp_T`, which introduces unnecessary overhead.
 
-The motivation behind this paper is to implement expression languages in a compositional style using W. Swierstra's Data Types à la Carte \cite{swierstra2008data}. The idea is to specify independent syntactic constructs as separate composable types, and to define functions over such types using extensible type classes (see Sec.\ \ref{compositional-data-types}). However, a compositional implementation is problematic when it comes to evaluation:
+The motivation behind this report is to implement expression languages in a compositional style using W. Swierstra's Data Types à la Carte \cite{swierstra2008data}. The idea is to specify independent syntactic constructs as separate composable types, and to define functions over such types using extensible type classes (see Sec.\ \ref{compositional-data-types}). However, a compositional implementation is problematic when it comes to evaluation:
 
   * Fully extensible *tagged evaluation* requires making both `Exp` and `Uni` compositional types. Construction and pattern matching for compositional types is generally linear in the degree of modularity, which means that the tag problem mentioned above becomes much worse as the language is extended.
   * Fully extensible *tagless evaluation* requires making both `Exp` and `Exp_T` compositional. However, a generic representation of `Exp_T` is quite different from that of `Exp`, and having to combine two different data type models just for the purpose of evaluation would make things unnecessarily complicated. Moreover, pattern matching on a compositional `Exp_T` gets more expensive as the language is extended.
@@ -126,11 +120,11 @@ An excellent solution to this problem is given in Baars and D.S. Swierstra's "Ty
 
 \bigskip
 
-This paper makes the following contributions: we give a simple implementation of Typing Dynamic Typing using modern (GHC) Haskell features (Sec.\ \ref{typing-dynamic-typing}). We make the implementation compositional using Data Types à la Carte (Sec.\ \ref{compositional-implementation}). We generalize the compositional implementation using a novel representation of open type representations (Sec.\ \ref{supporting-type-constructors}). We present a comparison of different implementations of evaluation in terms of performance (Sec.\ \ref{results}).
+This report makes the following contributions: we give a simple implementation of Typing Dynamic Typing using modern (GHC) Haskell features (Sec.\ \ref{typing-dynamic-typing}). We make the implementation compositional using Data Types à la Carte (Sec.\ \ref{compositional-implementation}). We generalize the compositional implementation using a novel representation of open type representations (Sec.\ \ref{supporting-type-constructors}). We present a comparison of different implementations of evaluation in terms of performance (Sec.\ \ref{results}).
 
-The source of this paper is available as a literate Haskell file.[^SourceCode] Certain parts of the code are elided from the paper, but the full definitions are found in the source code. A number of GHC-specific extensions are used.
+The source of this report is available as a literate Haskell file.[^SourceCode] Certain parts of the code are elided from the report, but the full definitions are found in the source code. A number of GHC-specific extensions are used.
 
-[^SourceCode]: <https://github.com/emilaxelsson/paper-tfp2014>
+[^SourceCode]: <https://github.com/emilaxelsson/tagless-eval>
 
 
 
@@ -612,7 +606,7 @@ instance (Compile t f, Compile t g) => Compile t (f :+: g) where
   -->
 
 \noindent
-The close similarity to the code in Fig.\ \ref{fig:typed-compilation} should make the instance self-explanatory. Note how the `t` parameter is left polymorphic, with the minimal constraint `IType :<: t`. This constraint is fulfilled by *any* type representation that includes `IType`. The remaining `Compile` instances are omitted from the paper, but can be found in the source code.
+The close similarity to the code in Fig.\ \ref{fig:typed-compilation} should make the instance self-explanatory. Note how the `t` parameter is left polymorphic, with the minimal constraint `IType :<: t`. This constraint is fulfilled by *any* type representation that includes `IType`. The remaining `Compile` instances are omitted from the report, but can be found in the source code.
 
 We can now define an evaluation function for compositional expressions similar to the definition of `eval_T`:
 
@@ -629,7 +623,7 @@ eval_C t exp = do
 Supporting Type Constructors
 ====================================================================================================
 
-This section might be rather technical, especially for readers not familiar with the generic data type model used\ \cite{axelsson2012generic}. However, it is possible to skip this section and move straight to the results without missing the main points of the paper.
+This section might be rather technical, especially for readers not familiar with the generic data type model used\ \cite{axelsson2012generic}. However, it is possible to skip this section and move straight to the results without missing the main points of the report.
 
 The compositional type representations introduced in Sec.\ \ref{compositional-evaluation} have one severe limitation: they do not support type constructors. For example, although it is possible to add a representation for lists of booleans,
 
@@ -797,7 +791,7 @@ We use a singleton constructor instead of a constructor for empty lists, because
 
 Compilation of `List_F` can be defined as follows:[^CompileIncompatible]
 
-[^CompileIncompatible]: The `Compile` instance for `List_F` is not directly compatible with the other instances in this paper. The `List_F` instance uses `(TypeRepNEW t)` as the type representation, while the other instances just use a constrained `t`. To make the instances compatible, the other instances would have to be rewritten to use the `open-typerep` library.
+[^CompileIncompatible]: The `Compile` instance for `List_F` is not directly compatible with the other instances in this report. The `List_F` instance uses `(TypeRepNEW t)` as the type representation, while the other instances just use a constrained `t`. To make the instances compatible, the other instances would have to be rewritten to use the `open-typerep` library.
 
 \begin{code}
 instance (TR.ListType TR.:<: t, TR.TypeEq t t) => Compile (TypeRepNEW t) List_F where
@@ -835,7 +829,7 @@ Note how the code does not mention the `AST` type or its constructors. Type repr
 Results
 ====================================================================================================
 
-To verify the claim that the method in this paper achieves efficient evaluation, we have performed some measurements of the speed of the different evaluation functions: `eval_U`[^eval_U], `eval_T` and `eval_C`. However, out of these functions, only `eval_C` is compositional. So to make the comparison meaningful, we have added a compositional version of `eval_U`:
+To verify the claim that the method in this report achieves efficient evaluation, we have performed some measurements of the speed of the different evaluation functions: `eval_U`[^eval_U], `eval_T` and `eval_C`. However, out of these functions, only `eval_C` is compositional. So to make the comparison meaningful, we have added a compositional version of `eval_U`:
 
 \begin{code}
 class Eval_UC u f g where
@@ -1068,10 +1062,10 @@ Conclusion and Related Work
 
 We have presented an implementation of evaluation for compositional expressions based on Typing Dynamic Typing\ \cite{baars2002typing}. The overhead due to compositional types is only present in the initial compilation stage. After compilation, a tagless evaluation function is obtained which performs evaluation completely without pattern matching or risk of getting stuck. This makes the method suitable for e.g. evaluating embedded languages based on compositional data types.
 
-The final tagless technique by Carette et al.\ \cite{carette2009finally} models languages using type classes, which makes the technique inherently tagless and compositional. However, in order to avoid tag checking of interpreted values, expressions have to be indexed on the interpreted type, just like in a GADT-based solution\ \cite{peytonjones2006simple}. If, for some reason, we start with an untyped representation of expressions (e.g. resulting from parsing), the only way to get to a type-indexed tagless expression is by means of typed compilation, e.g. as in this paper. Typed compilation to final tagless terms has been implemented by Kiselyov\ \cite{kiselyovtyped} (for non-compositional representations of source expressions).
+The final tagless technique by Carette et al.\ \cite{carette2009finally} models languages using type classes, which makes the technique inherently tagless and compositional. However, in order to avoid tag checking of interpreted values, expressions have to be indexed on the interpreted type, just like in a GADT-based solution\ \cite{peytonjones2006simple}. If, for some reason, we start with an untyped representation of expressions (e.g. resulting from parsing), the only way to get to a type-indexed tagless expression is by means of typed compilation, e.g. as in this report. Typed compilation to final tagless terms has been implemented by Kiselyov\ \cite{kiselyovtyped} (for non-compositional representations of source expressions).
 
   <!--
-TODO One could make a deal about the fact that the method in this paper has constrained polymorphic rules for operations like addition and equality. The implementations in \cite{augustsson2009more, kiselyovtyped} do not have this.
+TODO One could make a deal about the fact that the method in this report has constrained polymorphic rules for operations like addition and equality. The implementations in \cite{augustsson2009more, kiselyovtyped} do not have this.
   -->
 
 
@@ -1083,5 +1077,5 @@ TODO One could make a deal about the fact that the method in this paper has cons
 \subsubsection*{Acknowledgements}
 
 \noindent
-{\small This work is funded by the Swedish Foundation for Strategic Research, under grant RAWFP. David Raymond Christiansen and Gabor Greif provided useful feedback on this paper.}
+{\small This work is funded by the Swedish Foundation for Strategic Research, under grant RAWFP. David Raymond Christiansen and Gabor Greif provided useful feedback on this report.}
 
