@@ -1,6 +1,3 @@
-tagless-eval
-============
-
 Source code and benchmarks for the report "Efficient Evaluation for Untyped and Compositional Representations of Expressions".
 
 The benchmarks can be run as follows:

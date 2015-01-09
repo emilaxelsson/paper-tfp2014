@@ -1100,6 +1100,8 @@ The final tagless technique by Carette et al.\ \cite{carette2009finally} models 
 TODO One could make a deal about the fact that the method in this report has constrained polymorphic rules for operations like addition and equality. The implementations in \cite{augustsson2009more, kiselyovtyped} do not have this.
   -->
 
+Bahr has worked on evaluation for compositional data types\ \cite{bahr2011evaluation}. However, his work focuses on evaluation strategies rather than tag elimination.
+
 
 
   <!--
