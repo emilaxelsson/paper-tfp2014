@@ -63,33 +63,31 @@ type Name = String
 In order to evaluate `Exp`, we need a representation of values -- booleans and integers -- and an environment mapping bound variables to values:
 
 \begin{code}
-data Uni   = B Bool | I Int
+data Uni   = B !Bool | I !Int
 type Env a = [(Name,a)]
 \end{code}
 
 \noindent
-Evaluation can then be defined as follows (omitting the `If` case for brevity):
+Evaluation can then be defined as follows:
 
 \begin{code}
 eval_U :: Env Uni -> Exp -> Uni
-eval_U env (LitB b)  = B b
-eval_U env (LitI i)  = I i
-eval_U env (Equ a b) = case (eval_U env a, eval_U env b) of
+eval_U env (LitB b)   = B b
+eval_U env (LitI i)   = I i
+eval_U env (Equ a b)  = case (eval_U env a, eval_U env b) of
                          (B a', B b') -> B (a'==b')
                          (I a', I b') -> B (a'==b')
-eval_U env (Add a b) = case (eval_U env a, eval_U env b) of
+eval_U env (Add a b)  = case (eval_U env a, eval_U env b) of
                          (I a', I b') -> I (a'+b')
---dotLine
-eval_U env (Var v)   = fromJust $ lookup v env
+eval_U env (If c t f) = case (eval_U env c, eval_U env t, eval_U env f) of
+                         (B c', B t', B f') -> B $ if c' then t' else f'
+                         (B c', I t', I f') -> I $ if c' then t' else f'
+eval_U env (Var v)    = fromJust $ lookup v env
 \end{code}
 
   <!--
 
 \begin{code}
-eval_U env (If c t f) = case (eval_U env c, eval_U env t, eval_U env f) of
-    (B c', B t', B f') -> B $ if c' then t' else f'
-    (B c', I t', I f') -> I $ if c' then t' else f'
-
 eval_U env (Let v a b) = eval_U ((v, eval_U env a):env) b
 
 eval_U env (Iter v l i b) = case (eval_U env l, eval_U env i) of
@@ -98,40 +96,72 @@ eval_U env (Iter v l i b) = case (eval_U env l, eval_U env i) of
 
   -->
 
-One thing stands out in this definition: there is a lot of pattern matching going on! Not only do we have to match on the constructors of `Exp` -- we also have to eliminate and introduce type tags (`B` and `I`) of interpreted values for every single operation. This continuous untagging and tagging has a negative effect on performance.
+One thing stands out in this definition: There is a lot of pattern matching going on! Not only do we have to match on the constructors of `Exp` -- we also have to eliminate and introduce type tags (`B` and `I`) of interpreted values for every single operation. Such untagging and tagging can have a negative effect on performance.
 
-In a dependently typed programming language, tags can be eliminated by letting the return type of `eval_U` depend on the expression\ \cite{augustsson1999exercise,pasalic2002tagless}. This avoids the need for tagged unions in functions like `eval_U`. The standard way to do this in Haskell is to make `Exp` an indexed GADT\ \cite{peytonjones2006simple}, i.e. an expression type `Exp_T` that is indexed by the type it evaluates to, so the evaluator has the following type:
+It should be noted that modern compilers are able to handle some of the tagging efficiently. For example the strict fields in the `Uni` type makes `eval_U` essentially tagless in GHC.[^eval_I] Yet, as our measurements show (Sec.\ \ref{results}), the effect of pattern matching on the `Exp` type can still have a large impact on performance. We will also see that dealing with type tags becomes much more expensive in a compositional setting, where the `Uni` type is composed of smaller types.
+
+[^eval_I]: \lstset{basicstyle=\fontsize{7}{10}\fontencoding{T1}\ttfamily}Its performance is the same as that of a tagless version of `eval_U` in which we use `Int` to represent both integers and booleans (see the function `eval_I` in the paper's source code).
+
+  <!--
+\begin{code}
+-- For reference, a version of eval_U that uses Int instead of Uni (to show the impact of tags)
+eval_I :: Env Int -> Exp -> Int
+eval_I env (LitB b)       = b2i b
+eval_I env (LitI i)       = i
+eval_I env (Equ a b)      = b2i $ eval_I env a == eval_I env b
+eval_I env (Add a b)      = eval_I env a + eval_I env b
+eval_I env (If c t f)     = if eval_I env c == 1 then eval_I env t else eval_I env f
+eval_I env (Var v)        = fromJust $ lookup v env
+eval_I env (Let v a b)    = eval_I ((v, eval_I env a):env) b
+eval_I env (Iter v l i b) = iter (eval_I env l) (eval_I env i) (\s -> eval_I ((v,s):env) b)
+
+b2i True  = 1
+b2i False = 0
+\end{code}
+  -->
+
+Avoiding Type Tags
+------------------
+
+In a dependently typed programming language, type tags can be avoided by letting the return type of `eval_U` depend on the expression\ \cite{augustsson1999exercise,pasalic2002tagless}. This avoids the need for tagged unions in functions like `eval_U`. The standard way to do this in Haskell is to make `Exp` an indexed GADT\ \cite{augustsson1994silly,peytonjones2006simple}, i.e. an expression type `Exp_T` that is indexed by the type it evaluates to, so the evaluator has the following type:
 
 \begin{codex}
 eval_T :: ... -> Exp_T a -> a
 \end{codex}
 
-\noindent
 This means that an expression of type `Exp_T Int` evaluates to an *actual* `Int` rather than a tagged `Int`, and since the type index may vary in the recursive calls of `eval_T`, there is no longer any need for a tagged union. In order to make evaluation for the original `Exp` type efficient, a partial conversion function from `Exp` to `Exp_T` can be defined, and `eval_T` can then be used to evaluate the converted expression. Such a conversion function is implemented in a blog post by Augustsson\ \cite{augustsson2009more} (though not for the purpose of evaluation).
 
-Although going through a type-indexed expression does get rid of the tags of interpreted values, there are at least two problems with this solution: (1) It requires the definition of an additional data type `Exp_T`. If this data type is only going to be used for evaluation, this seems quite redundant. (2) We still have to pattern match on `Exp_T`, which introduces unnecessary overhead.
+Although going through a type-indexed expression does get rid of the tags of interpreted values, there are at least two problems with this solution:
+
+  * It requires the definition of an additional data type `Exp_T`. If this data type is only going to be used for evaluation, this seems quite redundant.
+  * We still have to pattern match on `Exp_T`, which introduces unnecessary overhead.
+
+Avoiding Tags Altogether
+------------------------
 
 The motivation behind this report is to implement expression languages in a compositional style using W. Swierstra's Data Types à la Carte \cite{swierstra2008data}. The idea is to specify independent syntactic constructs as separate composable types, and to define functions over such types using extensible type classes (see Sec.\ \ref{compositional-data-types}). However, a compositional implementation is problematic when it comes to evaluation:
 
-  * Fully extensible *tagged evaluation* requires making both `Exp` and `Uni` compositional types. Construction and pattern matching for compositional types is generally linear in the degree of modularity, which means that the tag problem mentioned above becomes much worse as the language is extended.
-  * Fully extensible *tagless evaluation* requires making both `Exp` and `Exp_T` compositional. However, a generic representation of `Exp_T` is quite different from that of `Exp`, and having to combine two different data type models just for the purpose of evaluation would make things unnecessarily complicated. Moreover, pattern matching on a compositional `Exp_T` gets more expensive as the language is extended.
+  * *Tagged evaluation* for compositional types requires making both `Exp` and `Uni` compositional types. With Data Types à la Carte, construction and pattern matching for compositional types is generally linear in the degree of modularity, which means that the problems with tagging and pattern matching become much worse as the language is extended.
+  * *Tagless evaluation* for compositional types requires making both `Exp` and `Exp_T` compositional. However, a generic representation of `Exp_T` is quite different from that of `Exp`, and having to combine two different data type models just for the purpose of evaluation would make things unnecessarily complicated. Moreover, pattern matching on a compositional `Exp_T` gets more expensive as the language is extended.
 
-An excellent solution to this problem is given in Baars and D.S. Swierstra's "Typing Dynamic Typing"\ \cite{baars2002typing}. Their approach is essentially to replace `Exp_T a` by a function `env -> a` where `env` is the runtime environment. One may think of the technique as fusing the conversion from `Exp` to `Exp_T` with the evaluator `eval_T` so that the `Exp_T` representation disappears. Put simply, this approach avoids the problem of having to make a compositional version of `Exp_T`. Not only does this lead to a simpler implementation; it also makes evaluation more efficient, as we get rid of the pattern matching on `Exp_T`.
+An excellent solution to these problems is given in A. Baars and S.D. Swierstra's "Typing Dynamic Typing"\ \cite{baars2002typing}. Their approach is essentially to replace `Exp_T a` by a function `env -> a` where `env` is the runtime environment. One may think of the technique as fusing the conversion from `Exp` to `Exp_T` with the evaluator `eval_T` so that the `Exp_T` representation disappears. Put simply, this approach avoids the problem of having to make a compositional version of `Exp_T`. Not only does this lead to a simpler implementation; it also makes evaluation more efficient, as we get rid of the pattern matching on `Exp_T`.
 
 \bigskip
 
-This report makes the following contributions: we give a simple implementation of Typing Dynamic Typing using modern (GHC) Haskell features (Sec.\ \ref{typing-dynamic-typing}). We make the implementation compositional using Data Types à la Carte (Sec.\ \ref{compositional-implementation}). We generalize the compositional implementation using a novel representation of open type representations (Sec.\ \ref{supporting-type-constructors}). We present a comparison of different implementations of evaluation in terms of performance (Sec.\ \ref{results}).
+The rest of the report is organized as follows: Sec.\ \ref{typing-dynamic-typing} gives a simple implementation of Typing Dynamic Typing using modern (GHC) Haskell features. Sec.\ \ref{compositional-implementation} makes the implementation compositional using Data Types à la Carte. Sec.\ \ref{supporting-type-constructors} generalizes the compositional implementation using a novel representation of open type representations. Finally, Sec.\ \ref{results} presents a comparison of different implementations of evaluation in terms of performance.
+
+\bigskip
 
 The source of this report is available as a literate Haskell file.[^SourceCode] Certain parts of the code are elided from the report, but the full definitions are found in the source code. A number of GHC-specific extensions are used.
 
-[^SourceCode]: <https://github.com/emilaxelsson/tagless-eval>
+[^SourceCode]: <https://github.com/emilaxelsson/tagless-eval/blob/master/Paper.lhs>
 
 
 
 Typing Dynamic Typing
 ====================================================================================================
 
-Typing Dynamic Typing is a technique for evaluating untyped expressions without any checking of type tags at run time\ \cite{baars2002typing}. In this section, we will present the technique using the `Exp` type from Sec.\ \ref{introduction}.
+Typing Dynamic Typing is a technique for evaluating untyped expressions without any checking of type tags or pattern matching at run time\ \cite{baars2002typing}. In this section, we will present the technique using the `Exp` type from Sec.\ \ref{introduction}.
 
 Type-Level Reasoning
 --------------------
@@ -165,7 +195,7 @@ data Wit c where
     Wit :: c => Wit c
 \end{code}
 
-[^Dict]: The `c` parameter of `Wit` has kind `Constraint`, which is allowed by the recent GHC extension `ConstraintKinds`. `Wit` is available as the type `DICT` in the `constraints` package: <http://hackage.haskell.org/package/constraints>.
+[^Dict]: \lstset{basicstyle=\fontsize{7}{10}\fontencoding{T1}\ttfamily}The `c` parameter of `Wit` has kind `Constraint`, which is allowed by the recent GHC extension `ConstraintKinds`. `Wit` is available as the type `DICT` in the `constraints` package: <http://hackage.haskell.org/package/constraints>.
 
 \noindent
 Similarly to how pattern matching on `BType`/`IType` introduces local constraints in the right-hand sides of `toInt`, pattern matching on `Wit` introduces `c` as a local constraint. A constraint can be e.g. a class constraint such as `(Num a)` or an equality between two types `(a ~ b)`.
@@ -319,7 +349,7 @@ For variables, the result is obtained by a lookup in the symbol table. Note that
 Local Variables
 ---------------
 
-Although the `Exp` type contains a constructor for variables, there are no constructs that bind local variables. In order to make the example language more interesting, we add two such constructs:
+Although the `Exp` type contains a constructor for variables, there are no constructs that bind local variables. In order to make the example language more interesting, we add two such constructs:[^ObjFunctions]
 
 \begin{code}
 data ExpOLD where
@@ -327,6 +357,8 @@ data ExpOLD where
     LetOLD  :: Name -> Exp -> Exp -> ExpOLD         -- Let binding
     IterOLD :: Name -> Exp -> Exp -> Exp -> ExpOLD  -- Iteration
 \end{code}
+
+[^ObjFunctions]: In order to keep the types simple, we avoid adding object-level functions to the language, but the technique in this report also works for functions.
 
 \noindent
 The expression `Let "x" a b` binds `"x"` to the expression `a` in the body `b`. The expression `Iter "x" l i b` will perform `l` iterations of the body `b`. In each iteration, the previous state is held in variable `"x"` and the initial state is given by `i`. For example, the following expression computes $2^8$ by iterating `\x -> x+x` eight times:
@@ -398,7 +430,7 @@ Finally, we can try evaluation in GHCi:
 Just 256
 \end{ghci}
 
-Let us take a step back and ponder what has been achieved so far. The problem was to get rid of the tag checking in the `eval_U` function. We have done this by breaking evaluation up in two stages: (1) typed compilation, and (2) running the compiled function. But since the compiler still has to check the types of all sub-expressions, have we really gained anything from this exercise? The crucial point is that since the language contains iteration, the same sub-expression may be evaluated *many times*, while the compiler only traverses the expression *once*. In contrast, `eval_U` (extended with `Iter`) has to check tags at *every* iteration of a loop.
+Let us take a step back and ponder what has been achieved so far. The problem was to get rid of the tag checking in the `eval_U` function. We have done this by breaking evaluation up in two stages: (1) typed compilation, and (2) running the compiled function. But since the compiler still has to check the types of all sub-expressions, have we really gained anything from this exercise? The crucial point is that since the language contains iteration, the same sub-expression may be evaluated *many times*, while the compiler only traverses the expression *once*. In contrast, `eval_U` (extended with `Iter`) has to perform tag checking and pattern matching at *every* loop iteration.
 
 
 
@@ -552,7 +584,7 @@ instance (TypeRep t1, TypeRep t2) => TypeRep (t1 :+: t2) where
 
 The `Compile` instance for `ArithF` looks as follows:[^UndecidableInstances]
 
-[^UndecidableInstances]: This instance requires turning on the `UndecidableInstances` extension. In this case, however, the undecidability poses no problems.
+[^UndecidableInstances]: \lstset{basicstyle=\fontsize{7}{10}\fontencoding{T1}\ttfamily}This instance requires turning on the `UndecidableInstances` extension. In this case, however, the undecidability poses no problems.
 
 \begin{code}
 instance (TypeRep t, IType :<: t) => Compile t Arith_F where
@@ -791,7 +823,7 @@ We use a singleton constructor instead of a constructor for empty lists, because
 
 Compilation of `List_F` can be defined as follows:[^CompileIncompatible]
 
-[^CompileIncompatible]: The `Compile` instance for `List_F` is not directly compatible with the other instances in this report. The `List_F` instance uses `(TypeRepNEW t)` as the type representation, while the other instances just use a constrained `t`. To make the instances compatible, the other instances would have to be rewritten to use the `open-typerep` library.
+[^CompileIncompatible]: \lstset{basicstyle=\fontsize{7}{10}\fontencoding{T1}\ttfamily}The `Compile` instance for `List_F` is not directly compatible with the other instances in this report. The `List_F` instance uses `(TypeRepNEW t)` as the type representation, while the other instances just use a constrained `t`. To make the instances compatible, the other instances would have to be rewritten to use the `open-typerep` library.
 
 \begin{code}
 instance (TR.ListType TR.:<: t, TR.TypeEq t t) => Compile (TypeRepNEW t) List_F where
@@ -840,7 +872,7 @@ eval_UC :: Eval_UC u f f => Env (Term u) -> Term f -> Term u
 eval_UC env (In f) = eval_UCF env f
 \end{code}
 
-[^eval_U]: In the measurements, `eval_U` has been extended with a case for `Iter`; see the source code for details. Note that `eval_U` is different from the other evaluation functions in that it throws an error rather than return `Nothing` when something goes wrong. However, our measurements show only small differences in time if `eval_U` is rewritten to return `Maybe`.
+[^eval_U]: \lstset{basicstyle=\fontsize{7}{10}\fontencoding{T1}\ttfamily}In the measurements, `eval_U` has been extended with a case for `Iter`; see the source code for details. Note that `eval_U` is different from the other evaluation functions in that it throws an error rather than return `Nothing` when something goes wrong. However, our measurements show only small differences in time if `eval_U` is rewritten to return `Maybe`.
 
   <!--
 \begin{code}
@@ -928,8 +960,8 @@ instance (B_F :<: u, I_F :<: u, Eval_UC u g g) => Eval_UC u Binding_F g where
 This definition is similar to the `Add` case in `eval_U`, but here we use an open universal type, so tagging and untagging is done using `inj` and `prj` from Fig.\ \ref{fig:subsumption}. The `Uni` type has been decomposed into the following functors:
 
 \begin{code}
-data B_F a = B_F Bool
-data I_F a = I_F Int
+data B_F a = B_F !Bool
+data I_F a = I_F !Int
 \end{code}
 
 As the degree of modularity increases, the functions `eval_C` and `eval_UC` become more expensive. To test this behavior, Fig.\ \ref{fig:eval-sizes} defines specialized evaluation functions for varying sizes of the functor sums. The empty type `X` is introduced just to be able make large functor sums.
@@ -995,17 +1027,17 @@ type Uni_30  = Term (X :+: X :+: X :+: X :+: X :+: X :+: X :+: X :+: X :+: X :+:
 
 The first benchmark is for a balanced addition tree of depth 18, where we get the following results:[^ReproducibleBenchmarks]
 
-[^ReproducibleBenchmarks]: All measurements were done on a Dell laptop with an Intel Core i7-4600U processor and GHC 7.8.2 with the `-O2` flag.
+[^ReproducibleBenchmarks]: \lstset{basicstyle=\fontsize{7}{10}\fontencoding{T1}\ttfamily}All measurements were done on a Dell laptop with an Intel Core i7-4600U processor and GHC 7.8.3 with the `-O2` flag.
 
 \vspace{-0.3cm}
 \begin{multicols}{2}
 \begin{ghci}
-eval_U   addTree: 0.019672s
-eval_T   addTree: 0.022689s
+eval_U addTree: 0.0046s
+eval_T addTree: 0.034s
 \end{ghci}
 \begin{ghci}
-eval_C3  addTree: 0.188947s
-eval_UC3 addTree: 0.026615s
+eval_C3  addTree: 0.19s
+eval_UC3 addTree: 0.011s
 \end{ghci}
 \end{multicols}
 \vspace{-0.2cm}
@@ -1013,7 +1045,7 @@ eval_UC3 addTree: 0.026615s
 \noindent
 In this case, the expression is very large, and the cost of compiling the expression is proportional to the cost of evaluating it. In such cases, typed compilation does not give any benefits, and we are better off using `eval_UC` for compositional evaluation. However, such huge expressions are quite rare. It is much more common to have small expressions that are costly to evaluate.
 
-Our next benchmark is a triply nested loop with `n` iterations at each level:
+Our next benchmark is a triply-nested loop with `n` iterations at each level:
 
 \begin{code}
 loopNestOLD :: Int -> Exp
@@ -1029,17 +1061,17 @@ This is a small expression, but it is costly to evaluate. For the expression `lo
 \vspace{-0.2cm}
 \begin{multicols}{2}
 \begin{ghci}
-eval_U    loopNest: 0.504205s
-eval_T    loopNest: 0.050187s
-eval_C3   loopNest: 0.070469s
-eval_UC3  loopNest: 0.52127s
+eval_U   loopNest: 0.14s
+eval_T   loopNest: 0.042s
+eval_C3  loopNest: 0.073s
+eval_UC3 loopNest: 0.17s
 \end{ghci}
 
 \begin{ghci}
-eval_C10  loopNest: 0.07133s
-eval_UC10 loopNest: 0.67257s
-eval_C30  loopNest: 0.070431s
-eval_UC30 loopNest: 1.14117s
+eval_C10  loopNest: 0.077s
+eval_UC10 loopNest: 0.27s
+eval_C30  loopNest: 0.074s
+eval_UC30 loopNest: 0.75s
 \end{ghci}
 \end{multicols}
 
@@ -1053,14 +1085,14 @@ loopNest_HOLD n = iter n 0 $ \x -> iter n x $ \y -> iter n y $ \z -> x+y+z+1
 \end{code}
 
 \noindent
-which runs the expression corresponding to `loopNest` directly in Haskell. This function runs around $40\times$ faster than `eval_T` (for `n = 100`). This is not surprising, given that `loopNest_H` is subject to GHC's `-O2` optimizations. We think of the typed compilation technique (Sec.\ \ref{typed-compilation}) as a compiler in the sense that it removes interpretive overhead before running a function. However, the result of typed compilation is generated at run time, so it will of course not be subject to GHC's optimizations. When `loopNest_H` is compiled with `-O0`, it is only $1.2\times$ faster than `eval_T` compiled with `-O2`. Thus, this benchmark shows that it is not unreasonable to expect an embedded evaluator to run on par with unoptimized, compiled Haskell code.
+which runs the expression corresponding to `loopNest` directly in Haskell. This function runs around $40\times$ faster than `eval_T` (for `n = 100`). This is not surprising, given that `loopNest_H` is subject to GHC's `-O2` optimizations. We think of the typed compilation technique (Sec.\ \ref{typed-compilation}) as a compiler in the sense that it removes interpretive overhead before running a function. However, the result of typed compilation is generated at run time, so it will of course not be subject to GHC's optimizations. Interestingly, when `loopNest_H 100` is compiled with `-O0`, it runs at the same speed as `eval_T` compiled with `-O2`. Thus, this benchmark shows that it is not unreasonable to expect an embedded evaluator to run on par with unoptimized, compiled Haskell code.
 
 
 
 Conclusion and Related Work
 ====================================================================================================
 
-We have presented an implementation of evaluation for compositional expressions based on Typing Dynamic Typing\ \cite{baars2002typing}. The overhead due to compositional types is only present in the initial compilation stage. After compilation, a tagless evaluation function is obtained which performs evaluation completely without pattern matching or risk of getting stuck. This makes the method suitable for e.g. evaluating embedded languages based on compositional data types.
+We have presented an implementation of evaluation for compositional expressions based on Typing Dynamic Typing\ \cite{baars2002typing}. The overhead due to compositional types is only present in the initial compilation stage. After compilation, a tagless evaluation function is obtained which performs evaluation completely without pattern matching or risk of getting stuck. This makes the method suitable e.g. for evaluating embedded languages based on compositional data types.
 
 The final tagless technique by Carette et al.\ \cite{carette2009finally} models languages using type classes, which makes the technique inherently tagless and compositional. However, in order to avoid tag checking of interpreted values, expressions have to be indexed on the interpreted type, just like in a GADT-based solution\ \cite{peytonjones2006simple}. If, for some reason, we start with an untyped representation of expressions (e.g. resulting from parsing), the only way to get to a type-indexed tagless expression is by means of typed compilation, e.g. as in this report. Typed compilation to final tagless terms has been implemented by Kiselyov\ \cite{kiselyovtyped} (for non-compositional representations of source expressions).
 
@@ -1077,5 +1109,5 @@ TODO One could make a deal about the fact that the method in this report has con
 \subsubsection*{Acknowledgements}
 
 \noindent
-{\small This work is funded by the Swedish Foundation for Strategic Research, under grant RAWFP. David Raymond Christiansen and Gabor Greif provided useful feedback on this report.}
+{\small This work is funded by the Swedish Foundation for Strategic Research, under grant RAWFP. David Raymond Christiansen, Gabor Greif and the anonymous referees for TFP 2014 provided useful feedback on this report.}
 

@@ -6,6 +6,7 @@
 
 {-# OPTIONS_GHC -fcontext-stack=100 #-}
 
+import Numeric
 import Data.Foldable (Foldable)
 import qualified Data.Foldable as Foldable
 import Data.Maybe (fromJust)
@@ -114,6 +115,9 @@ u2i' (In f) | Just (I_F i) <- prj f = i
 eval_U' :: Exp -> Maybe Int
 eval_U' = Just . u2i . eval_U []
 
+eval_I' :: Exp -> Maybe Int
+eval_I' = Just . eval_I []
+
 eval_T' :: Exp -> Maybe Int
 eval_T' = eval_T IType
 
@@ -143,6 +147,13 @@ fill ls = [(a ++ ": " ++ replicate d ' ', b) | (a,b) <- ls, let d = w - length a
   where
     w = maximum $ map (length.fst) ls
 
+-- | Show a time difference using @n@ significant figures
+showSignificant :: Int -> NominalDiffTime -> String
+showSignificant n a = showFFloat Nothing b "s"
+  where
+    ae = showEFloat (Just (n-1)) (fromRational $ toRational a) ""
+    b  = read ae :: Double
+
 runBench :: [Bench] -> IO ()
 runBench bs = do
     tab <- fmap fill . go bs [] =<< getCurrentTime
@@ -153,17 +164,19 @@ runBench bs = do
     go (Bench name b : bs) rs t = do
         b
         t' <- getCurrentTime
-        go bs ((name, show $ diffUTCTime t' t) : rs) t'
+        go bs ((name, showSignificant 2 $ diffUTCTime t' t) : rs) t'
 
 benchmarks1 =
-    [ Bench "eval_U   addTree" $ print $ eval_U'   addTreeFixed
-    , Bench "eval_T   addTree" $ print $ eval_T'   addTreeFixed
+    [ Bench "eval_U addTree" $ print $ eval_U'   addTreeFixed
+    , Bench "eval_I addTree" $ print $ eval_I'   addTreeFixed
+    , Bench "eval_T addTree" $ print $ eval_T'   addTreeFixed
     , Bench "eval_C3  addTree" $ print $ eval_C3'  addTreeFixed_C
     , Bench "eval_UC3 addTree" $ print $ eval_UC3' addTreeFixed_C
     ]
 
 benchmarks2 =
     [ Bench "eval_U   loopNest" $ print $ eval_U'   loopNestFixed
+    , Bench "eval_I   loopNest" $ print $ eval_I'   loopNestFixed
     , Bench "eval_T   loopNest" $ print $ eval_T'   loopNestFixed
     , Bench "eval_C3  loopNest" $ print $ eval_C3'  loopNestFixed_C
     , Bench "eval_UC3 loopNest" $ print $ eval_UC3' loopNestFixed_C
@@ -194,9 +207,9 @@ main = do
     case expNfG loopNestFixed_C10 of () -> return ()
     case expNfG loopNestFixed_C30 of () -> return ()
     -- Warm up
-    case eval_U' (loopNest 80)    of n  -> print n
-    case eval_U' (loopNest 81)    of n  -> print n
-    case eval_U' (loopNest 82)    of n  -> print n
+    print $ eval_U' (loopNest 80)
+    print $ eval_U' (loopNest 81)
+    print $ eval_U' (loopNest 82)
     -- Benchmarks
     runBench benchmarks1
     runBench benchmarks2
