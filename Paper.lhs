@@ -35,7 +35,7 @@ deriving instance Show (f (Term f)) => Show (Term f)
 Introduction
 ====================================================================================================
 
-Writing interpreters in strongly typed languages often requires using tagged unions to account for the fact that different sub-expressions of the interpreted language may result in values of different types. Consider the following Haskell data type representing expressions with integers and booleans:
+Writing interpreters in strongly typed languages often requires using tagged unions to account for the fact that different sub-expressions of the interpreted language may result in values of different types. Consider the following Haskell data type representing expressions with integers and Booleans:
 
 \begin{code}
 data Exp where
@@ -60,7 +60,7 @@ data Exp where
 type Name = String
 \end{code}
 
-In order to evaluate `Exp`, we need a representation of values -- booleans and integers -- and an environment mapping bound variables to values:
+In order to evaluate `Exp`, we need a representation of values -- Booleans and integers -- and an environment mapping bound variables to values:
 
 \begin{code}
 data Uni   = B !Bool | I !Int
@@ -100,7 +100,7 @@ One thing stands out in this definition: There is a lot of pattern matching goin
 
 It should be noted that modern compilers are able to handle some of the tagging efficiently. For example the strict fields in the `Uni` type makes `eval_U` essentially tagless in GHC.[^eval_I] Yet, as our measurements show (Sec.\ \ref{results}), the effect of pattern matching on the `Exp` type can still have a large impact on performance. We will also see that dealing with type tags becomes much more expensive in a compositional setting, where the `Uni` type is composed of smaller types.
 
-[^eval_I]: \lstset{basicstyle=\fontsize{7}{10}\fontencoding{T1}\ttfamily}Its performance is the same as that of a tagless version of `eval_U` in which we use `Int` to represent both integers and booleans (see the function `eval_I` in the paper's source code).
+[^eval_I]: \lstset{basicstyle=\fontsize{7}{10}\fontencoding{T1}\ttfamily}Its performance is similar to that of a tagless version of `eval_U` in which we use `Int` to represent both integers and Booleans (see the function `eval_I` in the paper's source code).
 
   <!--
 \begin{code}
@@ -148,7 +148,7 @@ An excellent solution to these problems is given in A. Baars and S.D. Swierstra'
 
 \bigskip
 
-The rest of the report is organized as follows: Sec.\ \ref{typing-dynamic-typing} gives a simple implementation of Typing Dynamic Typing using modern (GHC) Haskell features. Sec.\ \ref{compositional-implementation} makes the implementation compositional using Data Types à la Carte. Sec.\ \ref{supporting-type-constructors} generalizes the compositional implementation using a novel representation of open type representations. Finally, Sec.\ \ref{results} presents a comparison of different implementations of evaluation in terms of performance.
+The rest of the report is organized as follows: Sec.\ \ref{typing-dynamic-typing} gives a simple implementation of Typing Dynamic Typing using modern (GHC) Haskell features. Sec.\ \ref{implementation-for-compositional-data-types} implements the technique for compositional data types based on Data Types à la Carte. Sec.\ \ref{supporting-type-constructors} generalizes the compositional implementation using a novel representation of open type representations. Finally, Sec.\ \ref{results} presents a comparison of different implementations of evaluation in terms of performance.
 
 \bigskip
 
@@ -161,7 +161,7 @@ The source of this report is available as a literate Haskell file.[^SourceCode] 
 Typing Dynamic Typing
 ====================================================================================================
 
-Typing Dynamic Typing is a technique for evaluating untyped expressions without any checking of type tags or pattern matching at run time\ \cite{baars2002typing}. In this section, we will present the technique using the `Exp` type from Sec.\ \ref{introduction}.
+Typing Dynamic Typing is a technique for evaluating untyped representations of expressions without any checking of type tags or pattern matching, other than in an initial "typed compilation" stage\ \cite{baars2002typing}. In this section, we will present the technique using the `Exp` type from Sec.\ \ref{introduction}.
 
 Type-Level Reasoning
 --------------------
@@ -222,7 +222,7 @@ coerce ta tb a = do
 \noindent
 Note how pattern matching on `Wit` allows us to assume that `a` and `b` are equal for the rest of the `do` block. This makes it possible to return `a` as having type `b`. Such coercions are at the core of the compiler that will be defined in Sec.\ \ref{typed-compilation}.
 
-To prepare for the compositional implementation in Sec.\ \ref{compositional-implementation}, we overload `typeEq` on the type representation. The code is shown in Fig.\ \ref{fig:type-reasoning}, where we have also added functions for witnessing `Eq` and `Num` constraints.
+To prepare for the compositional implementation in Sec.\ \ref{implementation-for-compositional-data-types}, we overload `typeEq` on the type representation. The code is shown in Fig.\ \ref{fig:type-reasoning}, where we have also added functions for witnessing `Eq` and `Num` constraints.
 
 \begin{figure}[tp]
 \lstset{xleftmargin=1em}
@@ -340,7 +340,7 @@ gamma |- Iter v l i b = do
 \end{code}
   -->
 
-The compiler is defined in Fig.\ \ref{fig:typed-compilation}. Compilation of literals always succeeds, and the result is simply a constant function paired with the appropriate type representation. For `Equ`, we recursively compile the arguments and bind their run functions and types. In order to use `==` on the results of these run functions, we first have to prove that the arguments have the same type and that this type is a member of `Eq`. We do this by pattern matching on the witnesses returned from `typeEq` and `witEq`. The use of `do` notation and the `Maybe` monad makes it convenient to combine witnesses for multiple constraints: if any function fails to produce a witness, the whole definition fails to produce a result. If the witnesses are produced successfully, we have the necessary assumptions for `a' e == b' e` to be a well-typed expression. Compilation of `Add` and `If` follows the same principle.
+The compiler is defined in Fig.\ \ref{fig:typed-compilation}. Compilation of literals always succeeds, and the result is simply a constant function paired with the appropriate type representation. For `Equ`, we recursively compile the arguments and bind their run functions and types. In order to use `==` on the results of these run functions, we first have to prove that the arguments have the same type and that this type is a member of `Eq`. We do this by pattern matching on the witnesses returned from `typeEq` and `witEq`. The use of `do` notation and the `Maybe` monad makes it convenient to combine witnesses for multiple constraints: If any function fails to produce a witness, the whole definition fails to produce a result. If the witnesses are produced successfully, we have the necessary assumptions for `a' e == b' e` to be a well-typed expression. Compilation of `Add` and `If` follows the same principle.
 
 For variables, the result is obtained by a lookup in the symbol table. Note that this lookup may fail, in which case the compiler returns `Nothing`. However, lookup failure can only happen at "compile time" (i.e. in `|-`). If we do get a result from `|-`, this `CompExp` will evaluate variables by their run function applied to the runtime environment of type `env`. If `env` is a lookup table, we can also get lookup failures at run time. But as we will see in the next section, it is possible to make `env` a typed heterogeneous collection, such that no lookup failures can occur at run time.
 
@@ -434,7 +434,7 @@ Let us take a step back and ponder what has been achieved so far. The problem wa
 
 
 
-Compositional Implementation
+Implementation for Compositional Data Types
 ====================================================================================================
 
 So far, we have only considered a closed expression language, represented by `Exp`, and a closed set of types, represented by `Type`. However, the method developed is general and works for any language of similar structure. As in our previous research\ \cite{axelsson2012generic}, a main aim is to provide a generic library for EDSL implementation. The library should allow modular specification of syntactic constructs and manipulation functions so that an EDSL implementation can be done largely by assembling reusable components.
@@ -657,7 +657,7 @@ Supporting Type Constructors
 
 This section might be rather technical, especially for readers not familiar with the generic data type model used\ \cite{axelsson2012generic}. However, it is possible to skip this section and move straight to the results without missing the main points of the report.
 
-The compositional type representations introduced in Sec.\ \ref{compositional-evaluation} have one severe limitation: they do not support type constructors. For example, although it is possible to add a representation for lists of booleans,
+The compositional type representations introduced in Sec.\ \ref{compositional-evaluation} have one severe limitation: they do not support type constructors. For example, although it is possible to add a representation for lists of Booleans,
 
 \begin{code}
 data ListBType a where ListBType :: ListBType [Bool]
